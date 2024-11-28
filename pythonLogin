@@ -1,52 +1,34 @@
-=ROUND((LEN(A1)-SUMPRODUCT(MID(A1,ROW(INDIRECT("1:"&LEN(A1))),1)<>MID(B1,ROW(INDIRECT("1:"&LEN(A1))),1)))/LEN(A1),2)
-=1-LEVENSHTEIN(A1,B1)/MAX(LEN(A1),LEN(B1))
 import pandas as pd
 
 def calculate_match_percentage(str1, str2):
-    """Calculate string match percentage using Levenshtein distance"""
     if pd.isna(str1) or pd.isna(str2):
         return 0
-    
-    # Convert to lowercase for comparison
-    str1 = str1.lower()
-    str2 = str2.lower()
-    
-    if len(str1) == 0 or len(str2) == 0:
+    str1, str2 = str1.lower(), str2.lower()
+    if not (str1 and str2):
         return 0
-        
-    # Simple matching percentage based on character differences
     matches = sum(c1 == c2 for c1, c2 in zip(str1, min(str2, str1, key=len)))
-    percentage = matches / max(len(str1), len(str2))
-    return percentage
+    return matches / max(len(str1), len(str2))
 
 def analyze_logins(df):
-    """Analyze dev and UAT logins for each employee"""
     results = []
     
-    # Group by employee ID
-    for emp_id, group in df.groupby('empid'):
-        dev_logins = set(group['devLogin'].dropna())
-        uat_logins = set(group['uatLogin'].dropna())
+    for emp_id, emp_group in df.groupby('empid'):
+        dev_logins = set(emp_group['devLogin'].dropna())
+        employee_uat_logins = set(df[df['empid'] == emp_id]['uatLogin'].dropna())
         
         for dev_login in dev_logins:
-            # Compare each dev login with all UAT logins
-            match_percentages = [calculate_match_percentage(dev_login, uat_login) 
-                               for uat_login in uat_logins]
+            match_percentages = [(uat_login, calculate_match_percentage(dev_login, uat_login)) 
+                               for uat_login in employee_uat_logins]
             
             if not match_percentages:
                 match_status = "No Match"
                 best_match = None
                 match_percent = 0
             else:
-                max_match = max(match_percentages)
-                if max_match == 1:
-                    match_status = "Exact Match"
-                elif max_match > 0.5:
-                    match_status = "Partial Match"
-                else:
-                    match_status = "No Match"
-                
-                best_match = list(uat_logins)[match_percentages.index(max_match)]
+                best_match, max_match = max(match_percentages, key=lambda x: x[1])
+                match_status = ("Exact Match" if max_match == 1 else 
+                              "Partial Match" if max_match > 0.5 else 
+                              "No Match")
                 match_percent = max_match
             
             results.append({
@@ -59,10 +41,10 @@ def analyze_logins(df):
     
     return pd.DataFrame(results)
 
-# Example usage:
+# Test example
 data = pd.DataFrame({
     'empid': [1, 1, 1, 2, 2],
-    'devLogin': ['john.doe', 'john.d', 'johndoe', 'jane.smith', 'jsmith'],
+    'devLogin': ['john.doe', 'john.d', None, 'jane.smith', 'jsmith'],
     'uatLogin': ['john.doe.test', 'john.doe.uat', 'john.d.uat', 'jane.s.uat', 'jane.smith.uat']
 })
 
